@@ -23,7 +23,8 @@ from agent.prompts import (
     reflection_instructions,
     answer_instructions,
 )
-from langchain_google_genai import ChatGoogleGenerativeAI
+# from langchain_google_genai import ChatGoogleGenerativeAI  # 原始Google LLM导入
+from langchain_openai import AzureChatOpenAI
 from agent.utils import (
     get_citations,
     get_research_topic,
@@ -31,7 +32,20 @@ from agent.utils import (
     resolve_urls,
 )
 
-load_dotenv()
+import platform
+
+# 根据操作系统决定是否加载.env文件
+if platform.system() == "Windows":
+    # Windows环境下指定.env文件路径
+    env_path = r'C:\GitRepo\langchain-academy\module-1\.env'
+    load_dotenv(dotenv_path=env_path)
+else:
+    # Linux环境下直接从系统环境变量读取，不加载.env文件
+    pass
+# load_dotenv()  # 原始加载方式
+print(f"The AZURE_OPENAI_ENDPOINT is: {os.getenv('AZURE_OPENAI_ENDPOINT')}")
+
+os.environ["LANGSMITH_PROJECT"] = "langchain-academy-02"
 
 if os.getenv("GEMINI_API_KEY") is None:
     raise ValueError("GEMINI_API_KEY is not set")
@@ -44,7 +58,7 @@ genai_client = Client(api_key=os.getenv("GEMINI_API_KEY"))
 def generate_query(state: OverallState, config: RunnableConfig) -> QueryGenerationState:
     """LangGraph node that generates a search queries based on the User's question.
 
-    Uses Gemini 2.0 Flash to create an optimized search query for web research based on
+    Uses Azure OpenAI to create an optimized search query for web research based on
     the User's question.
 
     Args:
@@ -60,13 +74,24 @@ def generate_query(state: OverallState, config: RunnableConfig) -> QueryGenerati
     if state.get("initial_search_query_count") is None:
         state["initial_search_query_count"] = configurable.number_of_initial_queries
 
-    # init Gemini 2.0 Flash
-    llm = ChatGoogleGenerativeAI(
-        model=configurable.query_generator_model,
+    # init Azure OpenAI
+    llm = AzureChatOpenAI(
+        azure_deployment=os.getenv('AZURE_OPENAI_DEPLOYMENT'),
+        api_version=os.getenv('AZURE_OPENAI_API_VERSION'),
         temperature=1.0,
+        max_tokens=None,
+        timeout=None,
         max_retries=2,
-        api_key=os.getenv("GEMINI_API_KEY"),
     )
+    
+    # 原始Google LLM代码（已注释）:
+    # llm = ChatGoogleGenerativeAI(
+    #     model=configurable.query_generator_model,
+    #     temperature=1.0,
+    #     max_retries=2,
+    #     api_key=os.getenv("GEMINI_API_KEY"),
+    # )
+    
     structured_llm = llm.with_structured_output(SearchQueryList)
 
     # Format the prompt
@@ -162,13 +187,24 @@ def reflection(state: OverallState, config: RunnableConfig) -> ReflectionState:
         research_topic=get_research_topic(state["messages"]),
         summaries="\n\n---\n\n".join(state["web_research_result"]),
     )
-    # init Reasoning Model
-    llm = ChatGoogleGenerativeAI(
-        model=reasoning_model,
+    # init Azure OpenAI
+    llm = AzureChatOpenAI(
+        azure_deployment=os.getenv('AZURE_OPENAI_DEPLOYMENT'),
+        api_version=os.getenv('AZURE_OPENAI_API_VERSION'),
         temperature=1.0,
+        max_tokens=None,
+        timeout=None,
         max_retries=2,
-        api_key=os.getenv("GEMINI_API_KEY"),
     )
+    
+    # 原始Google LLM代码（已注释）:
+    # llm = ChatGoogleGenerativeAI(
+    #     model=reasoning_model,
+    #     temperature=1.0,
+    #     max_retries=2,
+    #     api_key=os.getenv("GEMINI_API_KEY"),
+    # )
+    
     result = llm.with_structured_output(Reflection).invoke(formatted_prompt)
 
     return {
@@ -241,13 +277,24 @@ def finalize_answer(state: OverallState, config: RunnableConfig):
         summaries="\n---\n\n".join(state["web_research_result"]),
     )
 
-    # init Reasoning Model, default to Gemini 2.5 Flash
-    llm = ChatGoogleGenerativeAI(
-        model=reasoning_model,
+    # init Azure OpenAI, default to Azure OpenAI
+    llm = AzureChatOpenAI(
+        azure_deployment=os.getenv('AZURE_OPENAI_DEPLOYMENT'),
+        api_version=os.getenv('AZURE_OPENAI_API_VERSION'),
         temperature=0,
+        max_tokens=None,
+        timeout=None,
         max_retries=2,
-        api_key=os.getenv("GEMINI_API_KEY"),
     )
+    
+    # 原始Google LLM代码（已注释）:
+    # llm = ChatGoogleGenerativeAI(
+    #     model=reasoning_model,
+    #     temperature=0,
+    #     max_retries=2,
+    #     api_key=os.getenv("GEMINI_API_KEY"),
+    # )
+    
     result = llm.invoke(formatted_prompt)
 
     # Replace the short urls with the original urls and add all used urls to the sources_gathered
